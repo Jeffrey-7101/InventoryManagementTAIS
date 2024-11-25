@@ -168,7 +168,7 @@ def delete_inbound_note(event, context):
     for product in note["Products"]:
         response = requests.put(
             f"{PRODUCTS_API_URL}/{product['ProductID']}",
-            json={"Quantity": -product["Quantity"], "LastPrice": product["Price"]},
+            json={"Quantity": -product["Quantity"]},
         )
         if response.status_code != 200:
             return {
