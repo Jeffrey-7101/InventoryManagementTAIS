@@ -11,9 +11,22 @@ dynamodb = boto3.resource("dynamodb", region_name=AWS_REGION)
 table = dynamodb.Table(DYNAMO_TABLE)
 
 def decimal_to_serializable(obj):
-    if isinstance(obj, Decimal):
+    """
+    Convierte objetos de tipo Decimal a tipos JSON serializables
+    (int o float), y procesa listas y diccionarios recursivamente.
+    """
+    if isinstance(obj, list):
+        # Procesa listas recursivamente
+        return [decimal_to_serializable(i) for i in obj]
+    elif isinstance(obj, dict):
+        # Procesa diccionarios recursivamente
+        return {k: decimal_to_serializable(v) for k, v in obj.items()}
+    elif isinstance(obj, Decimal):
+        # Convierte Decimal a int o float
         return float(obj) if obj % 1 else int(obj)
-    raise TypeError("Type not serializable")
+    else:
+        # Devuelve el objeto si no necesita conversión
+        return obj
 
 def create_product(event, context):
     body = json.loads(event["body"])
@@ -61,11 +74,11 @@ def get_all_products(event, context):
             items, key=lambda x: x.get(order_by_field, ""), reverse=reverse
         )
 
-    items = [decimal_to_serializable(item) for item in items]
+    items = decimal_to_serializable(items)
 
     return {
         "statusCode": 200,
-        "body": json.dumps(response["Items"],default=decimal_to_serializable),
+        "body": json.dumps(items),
     }
 
 
