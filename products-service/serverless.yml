@@ -7,12 +7,58 @@ service: products-service
 
 provider:
   name: aws
-  runtime: python3.12
-
+    runtime: python3.9
+    region: us-east-1
+    environment:
+      DYNAMO_TABLE: Products
+      AWS_REGION: ${env:AWS_REGION}
+      
 functions:
-  hello:
-    handler: handler.hello
+  createProduct:
+    handler: handler.create_product
     events:
-      - httpApi:
-          path: /
+      - http:
+          path: products
+          method: post
+
+  getAllProducts:
+    handler: handler.get_all_products
+    events:
+      - http:
+          path: products
           method: get
+
+  getProduct:
+    handler: handler.get_product
+    events:
+      - http:
+          path: products/{product_id}
+          method: get
+
+  updateProduct:
+    handler: handler.update_product
+    events:
+      - http:
+          path: products/{product_id}
+          method: put
+
+  deleteProduct:
+    handler: handler.delete_product
+    events:
+      - http:
+          path: products/{product_id}
+          method: delete
+
+resources:
+  Resources:
+    ProductsTable:
+      Type: AWS::DynamoDB::Table
+      Properties:
+        TableName: Products
+        AttributeDefinitions:
+          - AttributeName: ProductID
+            AttributeType: S
+        KeySchema:
+          - AttributeName: ProductID
+            KeyType: HASH
+        BillingMode: PAY_PER_REQUEST
