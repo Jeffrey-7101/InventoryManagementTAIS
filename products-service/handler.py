@@ -35,8 +35,8 @@ def create_product(event, context):
         "Name": body["Name"],
         "Description": body["Description"],
         "Category": body["Category"],
-        "Quantity": Decimal(0),
-        "LastPrice":  Decimal(0.0)
+        "Quantity": body["Quantity"],
+        "LastPrice":  body["LastPrice"]
     }
     table.put_item(Item=product)
     return {
@@ -99,31 +99,55 @@ def get_product(event, context):
 def update_product(event, context):
     product_id = event["pathParameters"]["product_id"]
     body = json.loads(event["body"])
+
+    response = table.get_item(Key={"ProductID": product_id})
+    if "Item" not in response:
+        return {
+            "statusCode": 404,
+            "body": json.dumps({"message": "Product not found"}),
+        }
+
+    current_product = response["Item"]
+
     update_expression = "SET "
     expression_attribute_values = {}
     expression_attribute_names = {}
-
 
     for key, value in body.items():
         if key == "Name":
             alias = "#name"
             expression_attribute_names[alias] = key
-            update_expression += f"{alias} = :{key}, "
+            update_expression += f"{alias} = :name, "  # Cambia :{key} por :name
+            expression_attribute_values[":name"] = value
+        elif key == "Quantity":
+            new_quantity = current_product.get("Quantity", 0) + value
+            update_expression += f"{key} = :{key}, "
+            expression_attribute_values[f":{key}"] = Decimal(new_quantity)
+        elif key == "LastPrice":
+            update_expression += f"{key} = :{key}, "
+            expression_attribute_values[f":{key}"] = Decimal(value)
         else:
             update_expression += f"{key} = :{key}, "
+            expression_attribute_values[f":{key}"] = value
 
-        expression_attribute_values[f":{key}"] = (
-            Decimal(value) if isinstance(value, (int, float)) else value
-        )
+    if not expression_attribute_values:
+        return {
+            "statusCode": 400,
+            "body": json.dumps({"message": "No valid fields provided for update"}),
+        }
 
     update_expression = update_expression.rstrip(", ")
 
-    table.update_item(
-        Key={"ProductID": product_id},
-        UpdateExpression=update_expression,
-        ExpressionAttributeValues=expression_attribute_values,
-        ExpressionAttributeNames=expression_attribute_names,
-    )
+    update_params = {
+        "Key": {"ProductID": product_id},
+        "UpdateExpression": update_expression,
+        "ExpressionAttributeValues": expression_attribute_values,
+    }
+    if expression_attribute_names:
+        update_params["ExpressionAttributeNames"] = expression_attribute_names
+    
+    table.update_item(**update_params)
+
     return {
         "statusCode": 200,
         "body": json.dumps({"message": "Product updated successfully!"}),
