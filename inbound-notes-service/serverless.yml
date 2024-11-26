@@ -5,6 +5,15 @@ app: inbound-notes-service
 # "service" is the name of this project. This will also be added to your AWS resource names.
 service: inbound-notes-service
 
+plugins:
+  - serverless-python-requirements
+
+custom:
+  pythonRequirements:
+    layer: true
+    slim: true
+    dockerizePip: true
+
 provider:
   name: aws
   runtime: python3.9
@@ -12,6 +21,8 @@ provider:
   environment:
     DYNAMO_TABLE: ${env:DYNAMO_TABLE}
     PRODUCTS_API_URL: ${env:PRODUCTS_API_URL}
+    S3_BUCKET_NAME: ${self:service}-inbound-notes-bucket-${sls:stage}
+
   iamRoleStatements:
     - Effect: Allow
       Action:
@@ -22,7 +33,28 @@ provider:
         - dynamodb:UpdateItem
       Resource:
         - arn:aws:dynamodb:${opt:region, self:provider.region}:*:table/${env:DYNAMO_TABLE}
+    - Effect: Allow
+      Action:
+        - s3:PutObject
+        - s3:GetObject
+        - s3:DeleteObject
+        - s3:ListBucket
+      Resource:
+        - arn:aws:s3:::${self:service}-inbound-notes-bucket-${sls:stage}
+        - arn:aws:s3:::${self:service}-inbound-notes-bucket-${sls:stage}/*
 
+    - Effect: Allow
+      Action:
+        - lambda:GetLayerVersion
+      Resource:
+        - arn:aws:lambda:${self:provider.region}:*:layer:PythonRequirementsLambdaLayer:*
+  
+
+  apiGateway:
+    minimumCompressionSize: 0
+    binaryMediaTypes:
+      - 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+  
 functions:
   createInboundNote:
     handler: handler.create_inbound_note
@@ -58,6 +90,15 @@ functions:
       - http:
           path: inbound-notes/{note_id}
           method: delete
+  
+  getInboundNoteFile:
+    handler: handler.get_inbound_note_file
+    layers:
+      - { Ref: PythonRequirementsLambdaLayer }
+    events:
+      - http:
+          path: inbound-notes/{note_id}/file
+          method: get
 
 resources:
   Resources:
@@ -72,4 +113,99 @@ resources:
           - AttributeName: NoteID
             KeyType: HASH
         BillingMode: PAY_PER_REQUEST
+
+    InboundNotesBucket:
+      Type: AWS::S3::Bucket
+      Properties:
+        BucketName: ${self:service}-inbound-notes-bucket-${sls:stage}
+        AccessControl: Private
+
+    GatewayResponseDefault4XX:
+      Type: AWS::ApiGateway::GatewayResponse
+      Properties:
+        ResponseType: DEFAULT_4XX
+        RestApiId:
+          Ref: ApiGatewayRestApi
+        ResponseParameters:
+          gatewayresponse.header.Access-Control-Allow-Origin: "'*'"
+          gatewayresponse.header.Access-Control-Allow-Headers: "'*'"
+          gatewayresponse.header.Access-Control-Allow-Methods: "'*'"
+
+    InboundNotesOptions:
+      Type: AWS::ApiGateway::Method
+      Properties:
+        AuthorizationType: NONE
+        HttpMethod: OPTIONS
+        ResourceId:
+          Ref: ApiGatewayResourceInboundDashnotes
+        RestApiId:
+          Ref: ApiGatewayRestApi
+        Integration:
+          Type: MOCK
+          IntegrationResponses:
+            - StatusCode: 200
+              ResponseParameters:
+                method.response.header.Access-Control-Allow-Headers: "'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token'"
+                method.response.header.Access-Control-Allow-Origin: "'*'"
+                method.response.header.Access-Control-Allow-Methods: "'OPTIONS,GET,POST'"
+          RequestTemplates:
+            application/json: '{ "statusCode": 200 }'
+        MethodResponses:
+          - StatusCode: 200
+            ResponseParameters:
+              method.response.header.Access-Control-Allow-Headers: true
+              method.response.header.Access-Control-Allow-Origin: true
+              method.response.header.Access-Control-Allow-Methods: true
+
+    InboundNotesNoteIdOptions:
+      Type: AWS::ApiGateway::Method
+      Properties:
+        AuthorizationType: NONE
+        HttpMethod: OPTIONS
+        ResourceId:
+          Ref: ApiGatewayResourceInboundDashnotesNoteidVar
+        RestApiId:
+          Ref: ApiGatewayRestApi
+        Integration:
+          Type: MOCK
+          IntegrationResponses:
+            - StatusCode: 200
+              ResponseParameters:
+                method.response.header.Access-Control-Allow-Headers: "'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token'"
+                method.response.header.Access-Control-Allow-Origin: "'*'"
+                method.response.header.Access-Control-Allow-Methods: "'OPTIONS,GET,PUT,DELETE'"
+          RequestTemplates:
+            application/json: '{ "statusCode": 200 }'
+        MethodResponses:
+          - StatusCode: 200
+            ResponseParameters:
+              method.response.header.Access-Control-Allow-Headers: true
+              method.response.header.Access-Control-Allow-Origin: true
+              method.response.header.Access-Control-Allow-Methods: true
+
+    InboundNotesNoteIdFileOptions:
+      Type: AWS::ApiGateway::Method
+      Properties:
+        AuthorizationType: NONE
+        HttpMethod: OPTIONS
+        ResourceId:
+          Ref: ApiGatewayResourceInboundDashnotesNoteidVarFile
+        RestApiId:
+          Ref: ApiGatewayRestApi
+        Integration:
+          Type: MOCK
+          IntegrationResponses:
+            - StatusCode: 200
+              ResponseParameters:
+                method.response.header.Access-Control-Allow-Headers: "'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token'"
+                method.response.header.Access-Control-Allow-Origin: "'*'"
+                method.response.header.Access-Control-Allow-Methods: "'OPTIONS,GET'"
+          RequestTemplates:
+            application/json: '{ "statusCode": 200 }'
+        MethodResponses:
+          - StatusCode: 200
+            ResponseParameters:
+              method.response.header.Access-Control-Allow-Headers: true
+              method.response.header.Access-Control-Allow-Origin: true
+              method.response.header.Access-Control-Allow-Methods: true
 
